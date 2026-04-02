@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridUpdateMode, DataReturnMode
 
 # 1. CONFIGURARE PAGINĂ
 st.set_page_config(page_title="Water License Portal", page_icon="💧", layout="wide")
@@ -22,123 +21,97 @@ st.markdown("""
     .main { background-color: #f8f9fa; }
     #MainMenu, footer, header {visibility: hidden;}
     .detail-card { 
-        background-color: white; padding: 25px; border-radius: 12px; 
-        border: 2px solid #1E3A8A; box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+        background-color: white; padding: 20px; border-radius: 12px; 
+        border: 1px solid #dee2e6; box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
         margin-top: 20px;
     }
-    .instruction-box {
-        padding: 10px; border-radius: 5px; background-color: #e7f3ff;
-        border-left: 5px solid #1E3A8A; color: #1E3A8A; font-weight: bold;
-        margin-bottom: 15px;
-    }
-    .ag-row:hover { background-color: #e1effe !important; cursor: pointer; }
     </style>
 """, unsafe_allow_html=True)
 
-
-# 3. ÎNCĂRCARE ȘI CURĂȚARE DATE
+# 3. ÎNCĂRCARE DATE
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv("water-licence-attributes.csv", sep=None, engine='python', encoding='cp1252',
-                         on_bad_lines='skip')
+        # Citim datele
+        df = pd.read_csv("water-licence-attributes.csv", encoding='cp1252', on_bad_lines='skip')
 
-        # 1. Eliminăm coloanele nedorite
+        # Eliminăm coloanele nedorite
         cols_to_drop = [c for c in df.columns if any(x.strip().lower() == c.strip().lower() for x in COLOANE_DE_SCOS)]
         df = df.drop(columns=cols_to_drop)
 
-        # 2. REDENUMIRE COLOANĂ (AuthorisationReference -> Water License)
         if "AuthorisationReference" in df.columns:
             df = df.rename(columns={"AuthorisationReference": "Water License"})
 
-        return df.fillna('N/A').astype(str)
-    except:
+        return df.fillna('N/A')
+    except Exception as e:
+        st.error(f"Eroare la date: {e}")
         return pd.DataFrame()
-
 
 df = load_data()
 
-# --- INTERFAȚA ---
 st.title("💧 Water License Search Portal")
 
-# 4. CĂUTĂRI (Actualizate pentru noul nume)
+# 4. CĂUTĂRI
 c1, c2, c3 = st.columns(3)
 with c1: s_name = st.text_input("👤 Legal Name:", placeholder="Search name...")
-with c2: s_auth = st.text_input("🔢 Water License No:", placeholder="Search ID...")  # Am schimbat eticheta aici
+with c2: s_auth = st.text_input("🔢 Water License No:", placeholder="Search ID...")
 with c3: s_water = st.text_input("🌊 Water Name/Type:", placeholder="Search water source...")
 
 # Filtrare
 d_show = df.copy()
-
 if s_name:
     col = next((c for c in df.columns if 'legal' in c.lower()), df.columns[0])
-    d_show = d_show[d_show[col].str.contains(s_name, case=False, na=False)]
+    d_show = d_show[d_show[col].astype(str).str.contains(s_name, case=False, na=False)]
 if s_auth:
-    # Căutăm în coloana redenumită "Water License"
-    col = "Water License" if "Water License" in d_show.columns else d_show.columns[0]
-    d_show = d_show[d_show[col].str.contains(s_auth, case=False, na=False)]
+    d_show = d_show[d_show["Water License"].astype(str).str.contains(s_auth, case=False, na=False)]
 if s_water:
-    target_col = "WaterName/Type" if "WaterName/Type" in df.columns else next(
-        (c for c in df.columns if 'water' in c.lower()), None)
+    target_col = next((c for c in df.columns if 'water' in c.lower()), None)
     if target_col:
-        d_show = d_show[d_show[target_col].str.contains(s_water, case=False, na=False)]
+        d_show = d_show[d_show[target_col].astype(str).str.contains(s_water, case=False, na=False)]
 
-if not (s_name or s_auth or s_water):
-    d_show = d_show.head(100)
+# 5. TABELUL MODERN
+st.markdown("### 📋 Results")
+st.info("💡 Select a row to view details.")
 
-# 5. TABELUL
-if d_show.empty:
-    st.warning("⚠️ No results found.")
-else:
-    st.markdown(
-        '<div class="instruction-box">💡 TIP: Click on a row below to see technical details and export records.</div>',
-        unsafe_allow_html=True)
+# Ensure we have data to show
+final_df = d_show.head(100) if not (s_name or s_auth or s_water) else d_show
 
-    manual_options = {
-        "columnDefs": [{"field": i, "headerName": i} for i in d_show.columns],
-        "defaultColDef": {"resizable": True, "sortable": True, "filter": True, "minWidth": 200},
-        "rowSelection": "single",
-        "pagination": True,
-        "paginationPageSize": 10
-    }
-
-    response = AgGrid(
-        d_show,
-        gridOptions=manual_options,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        theme='alpine',
-        height=450,
-        fit_columns_on_grid_load=False
+# Use selection only if the dataframe isn't empty
+if not final_df.empty:
+    selection = st.dataframe(
+        final_df,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row" # Changed 'single' to 'single-row' for better compatibility in some versions
     )
+else:
+    st.warning("No results found.")
+    selection = None
+    
 
-    # 6. DETALII POP-UP
-    sel = response.get('selected_rows')
-    row = None
-    if isinstance(sel, pd.DataFrame) and not sel.empty:
-        row = sel.iloc[0].to_dict()
-    elif isinstance(sel, list) and len(sel) > 0:
-        row = sel[0]
-
-    if row:
-        st.markdown("---")
-        st.markdown('<div class="detail-card">', unsafe_allow_html=True)
-        st.subheader("📋 Record Details")
-
-        clean_items = {k: v for k, v in row.items() if not str(k).startswith('_')}
-
-        cols = st.columns(3)
-        for i, (k, v) in enumerate(clean_items.items()):
-            with cols[i % 3]:
-                st.markdown(f"**{k}**")
-                st.info(str(v))
-
-        csv_single = pd.DataFrame([clean_items]).to_csv(index=False).encode('utf-8')
-        st.download_button(f"📥 Export License {row.get('Water License', '')}", csv_single, "license_detail.csv",
-                           "text/csv")
-        st.markdown('</div>', unsafe_allow_html=True)
+# 6. DETALII POP-UP (Aici era eroarea roșie - acum e reparată)
+if selection and len(selection.get("selection", {}).get("rows", [])) > 0:
+    selected_row_index = selection["selection"]["rows"][0]
+    row_data = final_df.iloc[selected_row_index].to_dict()
+    
+    st.markdown("---")
+    st.markdown('<div class="detail-card">', unsafe_allow_html=True)
+    st.subheader(f"🔍 Details for License: {row_data.get('Water License', 'N/A')}")
+    
+    cols = st.columns(3)
+    for i, (k, v) in enumerate(row_data.items()):
+        with cols[i % 3]:
+            st.write(f"**{k}**")
+            st.info(str(v))
+            
+    # Export pentru rândul selectat
+    csv_single = pd.DataFrame([row_data]).to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Export this record", csv_single, "license_detail.csv", "text/csv")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # 7. EXPORT GLOBAL
 if not d_show.empty:
     st.markdown("---")
     full_csv = d_show.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Download All Filtered Results (CSV)", full_csv, "water_licenses.csv", "text/csv")
+    st.download_button("📥 Download Filtered Results (CSV)", full_csv, "water_licenses.csv", "text/csv")
