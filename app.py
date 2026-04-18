@@ -124,9 +124,11 @@ def create_pdf(data):
     pdf.ln(4)
     
     # Data emiterii
+    office_loc = str(data.get("PostalTownSuburb", "QUEENSLAND")).upper()
     formatted_date = format_official_date(data.get("IssuedDate", ""))
+    
     pdf.set_font("helvetica", "B", 10)
-    pdf.cell(0, 8, f"Given at Toowoomba this {formatted_date}.", ln=True)
+    pdf.cell(0, 8, f"Given at {office_loc} this {formatted_date}.", ln=True)
     
     pdf.ln(10)
     pdf.set_font("helvetica", "B", 9)
