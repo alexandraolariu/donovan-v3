@@ -139,54 +139,34 @@ def create_pdf(data):
 # 3. DESIGN (CSS)
 st.markdown("""
 <style>
-    /* Fundalul principal al aplicației */
-    .stApp { 
-        background-color: hsla(222.86, 40.81%, 43.73%, 1) !important; 
-    } 
-
-    #MainMenu, footer, header {visibility: hidden;} 
-
-    /* Stilul pentru spinner-ul de Loading */
+    .stApp { background-color: hsla(222.86, 40.81%, 43.73%, 1) !important; }
+    #MainMenu, footer, header {visibility: hidden;}
+    
+    /* Stil pentru ferestrele de Loading (Spinner) și mesaje de info */
     div[data-testid="stAlert"] {
-        background-color: white !important;
+        background-color: rgba(0, 0, 0, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
         border-radius: 10px !important;
     }
-    div[data-testid="stAlert"] p {
-        color: black !important;
-    }
+    div[data-testid="stAlert"] p { color: white !important; }
 
-    /* Cardul alb pentru detalii (Record Details) */
     .detail-card { 
         background-color: white !important; 
         padding: 25px; 
         border-radius: 15px; 
-        border: 1px solid #e0e0e0; 
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2); 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
         margin-top: 20px; 
     }
 
-    /* --- MODIFICARE BULE (st.info) --- */
-    /* Targetăm casetele de info din cele 3 coloane pentru a le face mai închise */
+    /* Bulele de info din coloane */
     div[data-testid="stNotification"] {
-        background-color: rgba(0, 0, 0, 0.4) !important; /* Negru transparent */
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        background-color: rgba(0, 0, 0, 0.4) !important;
         border-radius: 8px !important;
     }
-    
-    /* Forțăm textul din interiorul bulelor să fie alb */
-    div[data-testid="stNotification"] div {
-        color: white !important;
-    }
+    div[data-testid="stNotification"] div { color: white !important; }
 
-    /* Culori pentru textele generale de pe fundalul albastru */
-    h1, h2, h3, label, .stMarkdown {
-        color: white !important;
-    }
-
-    /* Fix pentru textul din interiorul cardului alb (să rămână negru) */
-    .detail-card h3, .detail-card b, .detail-card p {
-        color: black !important;
-    }
+    h1, h2, h3, label, .stMarkdown { color: white !important; }
+    .detail-card h3, .detail-card b, .detail-card p { color: black !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -225,43 +205,47 @@ if s_name:
 if s_auth:
     d_show = d_show[d_show["Water License"].astype(str).str.contains(s_auth, case=False, na=False)]
 
-# 6. REZULTATE
-final_df = d_show
+# 6. REZULTATE CU LOADING
+st.subheader("📋 Search Results")
+with st.spinner("⏳ Loading table..."):
+    final_df = d_show
+    if not final_df.empty:
+        st.success(f"Found {len(final_df)} records")
+        selection = st.dataframe(
+            final_df, use_container_width=True, hide_index=True,
+            on_select="rerun", selection_mode="single-row",
+            key="main_results_table" 
+        )
+    else:
+        st.warning("No results found.")
+        selection = None
 
-if not final_df.empty:
-    # READAUGAT: Afișează numărul de înregistrări găsite
-    st.success(f"Found {len(final_df)} records")
-    
-    selection = st.dataframe(
-        final_df, use_container_width=True, hide_index=True,
-        on_select="rerun", selection_mode="single-row"
-    )
-else:
-    st.warning("No results found.")
-    selection = None
-
-# 7. DETALII ȘI DOWNLOAD
+# 7. DETALII ȘI DOWNLOAD CU LOADING
 if selection and selection.get("selection") and len(selection["selection"]["rows"]) > 0:
-    selected_index = selection["selection"]["rows"][0]
-    row_data = final_df.iloc[selected_index].to_dict()
-    
-    st.markdown('<div class="detail-card">', unsafe_allow_html=True)
-    st.subheader(f"🔍 Record Details: {row_data.get('Water License', 'N/A')}")
-    
-    pdf_bytes = create_pdf(row_data)
-    
-    b_col1, b_col2 = st.columns(2)
-    with b_col1:
-        st.download_button("📄 Download Water License", pdf_bytes, f"Licence_{row_data.get('Water License')}.pdf", "application/pdf")
-    with b_col2:
-        csv_record = pd.DataFrame([row_data]).to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV Record", csv_record, "record.csv", "text/csv")
-    
-    st.markdown("---")
-    # Afișăm absolut TOATE coloanele în interfață, conform cerinței
-    detail_cols = st.columns(3)
-    for i, (key, value) in enumerate(row_data.items()):
-        with detail_cols[i % 3]:
-            st.markdown(f"**{key}**")
-            st.info(str(value))
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.spinner("🔍 Loading details..."):
+        selected_index = selection["selection"]["rows"][0]
+        row_data = final_df.iloc[selected_index].to_dict()
+        
+        st.markdown('<div class="detail-card">', unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:black;'>🔍 Record Details: {row_data.get('Water License', 'N/A')}</h3>", unsafe_allow_html=True)
+        
+        pdf_bytes = create_pdf(row_data)
+        
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            st.download_button("📄 Download Water License", pdf_bytes, f"Licence_{row_data.get('Water License')}.pdf", "application/pdf")
+        with b_col2:
+            csv_record = pd.DataFrame([row_data]).to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download CSV Record", csv_record, "record.csv", "text/csv")
+        
+        st.markdown("<hr style='border-top: 1px solid #bbb'>", unsafe_allow_html=True)
+        
+        detail_cols = st.columns(3)
+        for i, (key, value) in enumerate(row_data.items()):
+            with detail_cols[i % 3]:
+                st.markdown(f"<b style='color:black'>{key}</b>", unsafe_allow_html=True)
+                st.info(str(value))
+        st.markdown('</div>', unsafe_allow_html=True)
+else:
+    # Chestia care îi spune să apese pe tabel
+    st.info("💡 Please click on the box from a row in the table above to view all detailed information and download options.")
